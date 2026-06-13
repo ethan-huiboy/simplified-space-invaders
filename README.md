@@ -1,0 +1,1 @@
+using a sensehat with a controllable joystick and buttons, i created a final project with aahaan nath to recreate space invaders using python 3 and the raspberry pi 8x8 led display case. please let me know what you think and i am open to suggestions and feedback
