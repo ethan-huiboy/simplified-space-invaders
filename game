@@ -1,0 +1,205 @@
+from sense_hat import SenseHat, ACTION_RELEASED
+from time import sleep
+from random import randint
+
+# color definitions
+white = (255, 255, 255)
+black = (0, 0, 0)
+green = (0, 255, 0)
+yellow = (255, 255, 0)
+blue = (0, 0, 255)
+red = (255, 0, 0)
+
+# when an invader/player dies; flashes white
+def flash_pixel(sense, x, y, times):
+    for _ in range(times):
+        sense.set_pixel(x, y, white)
+        sleep(0.15)
+        
+        sense.set_pixel(x, y, black)
+        sleep(0.15)
+
+# sets up game functions and gameplay for invaders & player
+def draw(sense, base_x, bullets, invaders_top, invaders_bottom, bombs):
+    sense.clear()
+    
+    for b in bullets:
+        sense.set_pixel(b[0], b[1], white)
+        
+    for i in invaders_top:
+        sense.set_pixel(i[0], i[1], green)
+        
+    for i in invaders_bottom:
+        sense.set_pixel(i[0], i[1], green)
+        
+    for bomb in bombs:
+        sense.set_pixel(bomb[0], bomb[1], yellow)
+        
+    sense.set_pixel(base_x, 7, blue)
+
+# joystick movement
+def move_left(event, base_x):
+    if event.action != ACTION_RELEASED and base_x > 0:
+        base_x -= 1
+    return base_x
+
+def move_right(event, base_x):
+    if event.action != ACTION_RELEASED and base_x < 7:
+        base_x += 1
+    return base_x
+
+def fire(event, bullets, base_x, max_bullets):
+    if event.action != ACTION_RELEASED and len(bullets) < max_bullets:
+        bullets.append([base_x, 6])
+    return bullets
+
+# MAIN GAME LOOP
+def main():
+    sense = SenseHat()
+
+    # settings
+    max_bullets = 3
+    base_x = 3
+    score = 0
+    round_num = 1
+    game_over = False
+
+    # intro
+    sense.show_message("Welcome to", text_colour = white, scroll_speed = 0.05)
+    sense.show_message("SPACE INVADERS", text_colour = blue, scroll_speed = 0.05)
+    sense.show_message("Press to start!", text_colour = green, scroll_speed = 0.05)
+
+    # waits for player to press start
+    while True:
+        for event in sense.stick.get_events():
+            if event.direction == "middle" and event.action == ACTION_RELEASED:
+              # displays an invader image after the player presses middle button
+              invader_image = [
+                  black, green, black, green, green, black, green, black,
+                  black, black, green, green, green, green, black, black,
+                  green, green, green, green, green, green, green, green,
+                  green, black, green, green, green, green, black, green,
+                  green, green, green, green, green, green, green, green,
+                  black, green, green, black, black, green, green, black,
+                  black, green, black, black, black, black, green, black,
+                  green, black, black, black, black, black, black, green
+              ]
+              sense.set_pixels(invader_image)
+              sleep(2)
+              sense.clear()
+              break
+        else:
+            sleep(0.1)
+            continue
+        break
+
+    while not game_over:
+        # display round #
+        sense.show_message("Round " + str(round_num), text_colour = yellow, scroll_speed = 0.05)
+
+        # resets the round's state
+        bullets = []
+        bombs = []
+        tick = 0
+        speed = max(0.05, 0.1 - (round_num - 1) * 0.01)
+        bomb_chance = min(50, 8 + round_num * 2)
+
+        # sets up invaders
+        invaders_top = [[x, 0] for x in range(0, 8, 2)]
+        invaders_bottom = [[7 - x, 1] for x in range(0, 8, 2)]
+        invader_top_dir = 1
+        invader_bottom_dir = -1
+
+      # loops for a round
+        # defines joystick actions
+        while invaders_top or invaders_bottom:
+            for event in sense.stick.get_events():
+                if event.direction == "left":
+                    base_x = move_left(event, base_x)
+                elif event.direction == "right":
+                    base_x = move_right(event, base_x)
+                elif event.direction == "middle":
+                    bullets = fire(event, bullets, base_x, max_bullets)
+            
+            # displays bullets
+            bullets = [[b[0], b[1] - 1] for b in bullets if b[1] > 0]
+            
+            # how fast an invader moves (tick speed of invader)
+            # first row
+            if tick % 4 == 0:
+                if any(i[0] + invader_top_dir < 0 or i[0] + invader_top_dir > 7 for i in invaders_top):
+                    invader_top_dir *= -1
+                for i in invaders_top:
+                    i[0] += invader_top_dir
+            
+            # second row
+            if tick % 6 == 0:
+                if any(i[0] + invader_bottom_dir < 0 or i[0] + invader_bottom_dir > 7 for i in invaders_bottom):
+                    invader_bottom_dir *= -1
+                for i in invaders_bottom:
+                    i[0] += invader_bottom_dir
+                    
+            # bomb speed
+            if tick % 10 == 0:
+                for i in invaders_top + invaders_bottom:
+                    if randint(0, 100) < bomb_chance:
+                        bombs.append([i[0], i[1] + 1])
+            
+            # displays bombs as pixels getting dropped
+            new_bombs = []
+            for b in bombs:
+                b[1] += 1
+                if b[1] > 7:
+                    continue
+                if b[1] == 7 and b[0] == base_x:
+                    flash_pixel(sense, b[0], b[1], 2)
+                    game_over = True
+                    break
+                new_bombs.append(b)
+            bombs = new_bombs
+            
+            # displays bullets as pixels get shot from the player
+            new_bullets = []
+            for b in bullets:
+                hit = False
+                for invaders in [invaders_top, invaders_bottom]:
+                    for i in invaders:
+                        if b[0] == i[0] and b[1] == i[1]:
+                            flash_pixel(sense, i[0], i[1], 1)
+                            invaders.remove(i)
+                            score += 1
+                            hit = True
+                            break
+                    if hit:
+                        break
+                if not hit:
+                    new_bullets.append(b)
+            bullets = new_bullets
+            
+            # imports game settings/mechanics
+            draw(sense, base_x, bullets, invaders_top, invaders_bottom, bombs)
+            sleep(speed)
+            tick += 1
+            
+            # game is terminated after player is defeated
+            if game_over:
+                break
+              
+        # displays round number after all invaders are defeated
+        if not game_over:
+            round_num += 1
+
+    # end screen
+    sense.clear()
+    sense.show_message("Game Over", text_colour = red, scroll_speed = 0.05)
+    
+    # displays score and round cleared
+    sense.show_message("Score: ", text_colour = white, scroll_speed = 0.05)
+    sense.show_message(str(score), text_colour = green, scroll_speed = 0.05)
+    
+    sense.show_message("Rounds cleared: " + str(round_num), text_colour = yellow, scroll_speed = 0.05)
+
+if __name__ == "__main__":
+    main()
+
+
